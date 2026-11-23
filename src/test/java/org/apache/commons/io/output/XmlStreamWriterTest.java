@@ -133,4 +133,14 @@ public class XmlStreamWriterTest extends TestCase {
     public void testEBCDICEncoding() throws IOException {
         checkXmlWriter("simple text in EBCDIC", "CP1047");
     }
+
+    public void testMultiLineXmlProlog() throws IOException {
+        String xml = "<?xml\nversion=\"1.0\"\nencoding=\"ISO-8859-1\"\n?>\n<text>" + TEXT_LATIN1 + "</text>";
+        checkXmlContent(xml, "ISO-8859-1", null);
+    }
+
+    public void testXmlPrologWithoutVersion() throws IOException {
+        String xml = "<?xml encoding=\"ISO-8859-1\"?>\n<text>" + TEXT_LATIN1 + "</text>";
+        checkXmlContent(xml, "ISO-8859-1", null);
+    }
 }

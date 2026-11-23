@@ -689,9 +689,25 @@ public class XmlStreamReader extends Reader {
         return encoding;
     }
 
+    /**
+     * Pattern capturing the encoding of the "xml" processing instruction.
+     * <p>
+     * See also the <a href="https://www.w3.org/TR/2008/REC-xml-20081126/#NT-EncName">XML specification</a>.
+     * </p>
+     */
     public static final Pattern ENCODING_PATTERN = Pattern.compile(
-            "<\\?xml.*encoding[\\s]*=[\\s]*((?:\".[^\"]*\")|(?:'.[^']*'))",
+    // @formatter:off
+            "^<\\?xml\\s+"
+            + "(?:version\\s*=\\s*(?:(?:\"1\\.[0-9]+\")|(?:'1.[0-9]+'))\\s+)??"
+            + "encoding\\s*=\\s*"
+            + "((?:\"[A-Za-z0-9][A-Za-z0-9._+:-]*\")"  // double-quoted
+            +  "|(?:'[A-Za-z0-9][A-Za-z0-9._+:-]*'))", // single-quoted
             Pattern.MULTILINE);
+    // N.B. the documented pattern is
+    // EncName   ::=   [A-Za-z] ([A-Za-z0-9._] | '-')*
+    // However this does not match all the aliases that are supported by Java.
+    // e.g.  '437', 'ISO_8859-1:1987' and 'ebcdic-de-273+euro'
+    // @formatter:on
 
     /**
      * Returns the encoding declared in the <?xml encoding=...?>, NULL if none.
@@ -736,7 +752,7 @@ public class XmlStreamReader extends Reader {
                 StringBuffer prolog = new StringBuffer();
                 String line = bReader.readLine();
                 while (line != null) {
-                    prolog.append(line);
+                    prolog.append(line).append(' ');
                     line = bReader.readLine();
                 }
                 Matcher m = ENCODING_PATTERN.matcher(prolog);

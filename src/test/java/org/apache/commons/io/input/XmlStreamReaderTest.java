@@ -17,6 +17,7 @@
 package org.apache.commons.io.input;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -29,6 +30,7 @@ import java.io.Writer;
 import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
 
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
@@ -36,6 +38,8 @@ import org.junit.Test;
 /**
  */
 public class XmlStreamReaderTest {
+    private static final String XML7 = "xml-prolog-encoding-no-version";
+    private static final String XML6 = "xml-prolog-encoding-new-line";
     private static final String XML5 = "xml-prolog-encoding-spaced-single-quotes";
     private static final String XML4 = "xml-prolog-encoding-single-quotes";
     private static final String XML3 = "xml-prolog-encoding-double-quotes";
@@ -60,6 +64,14 @@ public class XmlStreamReaderTest {
         assertEquals(xmlReader.getEncoding(), encoding);
 
         is = getXmlStream("no-bom", XML5, encoding, encoding);
+        xmlReader = new XmlStreamReader(is);
+        assertEquals(xmlReader.getEncoding(), encoding);
+
+        is = getXmlStream("no-bom", XML6, encoding, encoding);
+        xmlReader = new XmlStreamReader(is);
+        assertEquals(xmlReader.getEncoding(), encoding);
+
+        is = getXmlStream("no-bom", XML7, encoding, encoding);
         xmlReader = new XmlStreamReader(is);
         assertEquals(xmlReader.getEncoding(), encoding);
     }
@@ -361,6 +373,69 @@ public class XmlStreamReaderTest {
         assertEquals(xmlReader.getEncoding(), "UTF-8");
     }
 
+    private static String getPrologEncoding(CharSequence prolog) {
+        Matcher m = XmlStreamReader.ENCODING_PATTERN.matcher(prolog);
+        if (!m.find()) {
+            return null;
+        }
+        String quoted = m.group(1);
+        return quoted.substring(1, quoted.length() - 1);
+    }
+
+    @Test
+    public void testEncodingPattern() {
+        assertEquals("UTF-8", getPrologEncoding("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assertEquals("UTF-8", getPrologEncoding("<?xml version='1.0' encoding='UTF-8'?>"));
+        assertEquals("UTF-8", getPrologEncoding("<?xml version = \"1.0\"  encoding = \"UTF-8\" ?>"));
+        assertEquals("UTF-8", getPrologEncoding("<?xml\nversion=\"1.0\"\nencoding=\"UTF-8\"\n?>"));
+        assertEquals("UTF-8", getPrologEncoding("<?xml encoding=\"UTF-8\"?>"));
+        // Java charset aliases that do not follow the XML EncName production
+        assertEquals("437", getPrologEncoding("<?xml version=\"1.0\" encoding=\"437\"?>"));
+        assertEquals("ISO_8859-1:1987", getPrologEncoding("<?xml version=\"1.0\" encoding=\"ISO_8859-1:1987\"?>"));
+        assertEquals("ebcdic-de-273+euro", getPrologEncoding("<?xml version=\"1.0\" encoding='ebcdic-de-273+euro'?>"));
+        // no encoding declared
+        assertNull(getPrologEncoding("<?xml version=\"1.0\"?>"));
+        assertNull(getPrologEncoding("<root encoding=\"UTF-8\"/>"));
+    }
+
+    /**
+     * CVE-2024-47554: ENCODING_PATTERN must not backtrack excessively on crafted input made of
+     * many XML declaration starts without an encoding.
+     */
+    @Test(timeout = 10000)
+    public void testEncodingPatternReDoSRepeatedXmlDeclaration() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 50000; i++) {
+            sb.append("<?xml");
+        }
+        assertNull(getPrologEncoding(sb));
+    }
+
+    /**
+     * CVE-2024-47554: ENCODING_PATTERN must not backtrack excessively on crafted input made of
+     * many XML declaration starts with unquoted encoding attributes.
+     */
+    @Test(timeout = 10000)
+    public void testEncodingPatternReDoSRepeatedEncodingAttribute() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 20000; i++) {
+            sb.append("<?xml encoding=");
+        }
+        assertNull(getPrologEncoding(sb));
+    }
+
+    /**
+     * CVE-2024-47554: ENCODING_PATTERN must stay linear when the crafted input spans many lines.
+     */
+    @Test(timeout = 10000)
+    public void testEncodingPatternReDoSMultiLine() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 50000; i++) {
+            sb.append("<?xml encoding= \n");
+        }
+        assertNull(getPrologEncoding(sb));
+    }
+
     // XML Stream generator
 
     private static final int[] NO_BOM_BYTES = {};
@@ -392,6 +467,10 @@ public class XmlStreamReaderTest {
             "<?xml version=\"1.0\" encoding=''{1}''?>\n<root>{2}</root>");
     private static final MessageFormat XML_WITH_PROLOG_AND_ENCODING_SPACED_SINGLE_QUOTES = new MessageFormat(
             "<?xml version=\"1.0\" encoding =  \t \n \r''{1}''?>\n<root>{2}</root>");
+    private static final MessageFormat XML_WITH_PROLOG_AND_ENCODING_NEW_LINES = new MessageFormat(
+            "<?xml\nversion\n=\n\"1.0\"\nencoding\n=\n\"{1}\"\n?>\n<root>{2}</root>");
+    private static final MessageFormat XML_WITH_PROLOG_AND_ENCODING_NO_VERSION = new MessageFormat(
+            "<?xml encoding=\"{1}\"?>\n<root>{2}</root>");
 
     private static final MessageFormat INFO = new MessageFormat(
             "\nBOM : {0}\nDoc : {1}\nStream Enc : {2}\nProlog Enc : {3}\n");
@@ -404,6 +483,8 @@ public class XmlStreamReaderTest {
         XMLs.put(XML3, XML_WITH_PROLOG_AND_ENCODING_DOUBLE_QUOTES);
         XMLs.put(XML4, XML_WITH_PROLOG_AND_ENCODING_SINGLE_QUOTES);
         XMLs.put(XML5, XML_WITH_PROLOG_AND_ENCODING_SPACED_SINGLE_QUOTES);
+        XMLs.put(XML6, XML_WITH_PROLOG_AND_ENCODING_NEW_LINES);
+        XMLs.put(XML7, XML_WITH_PROLOG_AND_ENCODING_NO_VERSION);
     }
 
     /**
